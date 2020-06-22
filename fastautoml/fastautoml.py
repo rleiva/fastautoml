@@ -2235,7 +2235,6 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
         return (nsc, nn, viu)
 
 
-    # WARNING: Experimental, do not use in production
     # TODO: build a sklearn wrapper around the model
     def GrammaticalEvolution(self):
         
@@ -2252,9 +2251,9 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
         #                 
         #     <operator>   ::= + | - | * | /
         #     <scale>      ::= *
-        #     <number>     ::= <digit> | <digit><digit0> | | <digit><digit0><digit0>
+        #     <number>     ::= <digit> | <digit><digit0> 
         #     <digit>      ::= 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
-        #     <digit0>     ::= 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+        #     <digit0>     ::= 0 | 5
         #     <exponent>   ::= 2 | 3 | (1/2) | (1/3)
         #     <feature>    ::= 1 .. self.X_.shape[1]
 
@@ -2269,8 +2268,7 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
             "scale":      ["*"],
             "number":     [
                             ["<digit>"], 
-                            ["<digit>", "<digit0>"],
-                            ["<digit>", "<digit0>", "<digit0>"]
+                            ["<digit>", "<digit0>"]
                           ],
             "digit":      ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
             "digit0":     ["0", "5"],
@@ -2286,7 +2284,7 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
 
         # Use differential evolution to find the optimal model
         bounds = [(0, self.max_num_tokens)] * self.max_num_derivations
-        result = differential_evolution(self._evaluate_genotype, bounds)
+        result = differential_evolution(self._evaluate_genotype, bounds, updating='deferred', workers=-1)
         
         # Retrieve model
         model = self._parse_grammar(result.x)
@@ -2296,6 +2294,8 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
 
         # Compute model string
         model_str = model.replace("self.", "")
+        model_str = model_str.replace("_", "")
+        model_str = model_str.replace(":,", "")
         
         # Compute the variables in use
         viu          = np.zeros(self.X_.shape[1], dtype=int)                    
@@ -2307,7 +2307,7 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
         # Compute the nescience
         nsc = self.nescience_.nescience(None, subset=viu, predictions=pred, model_string=model_str)
         
-        return (nsc, model, viu)
+        return (nsc, model_str, viu)
 
 
     """
@@ -2317,19 +2317,27 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
     Return the nescience of the phenotype
     """
     def _evaluate_genotype(self, x):
-                
+                        
         # Retrieve model
         model = self._parse_grammar(x)
-                
-        # Compute the predicted values
-        try:
-            pred = eval(model)
-        except:
-            # In case of non-evaluable model, return a nescience of 1
-            return 1 
+                        
+
+        # Avoid those annoying warnings
+        with warnings.catch_warnings():
+            
+            warnings.simplefilter("ignore")
+
+            # Compute the predicted values
+            try:
+                pred = eval(model)
+            except:
+                # In case of non-evaluable model, return a nescience of 1
+                return 1 
                             
         # Compute a simplified version of model string
         model_str = model.replace("self.", "")
+        model_str = model_str.replace("_", "")
+        model_str = model_str.replace(":,", "")
                 
         # Compute the variables in use
         viu          = np.zeros(self.X_.shape[1], dtype=int)                    
@@ -2344,7 +2352,7 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
         except:
             # In case of non-computable nesciencee, return a value of 1
             return 1 
-                
+                        
         return nsc
 
 
@@ -2383,9 +2391,7 @@ class AutoRegressor(BaseEstimator, RegressorMixin):
                     ind = ind + 1
                     ind = ind % self.max_num_derivations
                                         
-                else:
-                                   
-                    # new_phenotype = new_phenotype + list(token)
+                else:                                   
                     new_phenotype.append(token)
                          
             phenotype = new_phenotype
